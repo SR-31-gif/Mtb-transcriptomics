@@ -1,0 +1,454 @@
+#Installation of necessary tools:
+sudo apt update
+sudo apt install sra-toolkit fastqc trimmomatic hisat2 samtools
+
+#Downloading RNA-seq data from NCBI SRA:
+prefetch SRR7444071
+
+#Extracting it into FASTQ  format:
+fastq-dump --split-files SRR7444071
+
+#Check the quality of raw reads:
+fastqc SRR7444071_1.fastq SRR7444071_2.fastq
+
+
+# Define paths
+GENOME_DIR="/home/biolab001-dkt-024/sadhana/genome"
+SAMPLES_DIR="/home/biolab001-dkt-024/sadhana/samples"
+OUTPUT_DIR="/home/biolab001-dkt-024/sadhana/output"
+
+# Genome files
+GENOME_FASTA="${GENOME_DIR}/genome.fa"
+GENOME_GTF="${GENOME_DIR}/annotation.gtf"
+
+# Tools paths
+TRIMMOMATIC_JAR="/home/biolab001-dkt-024/sadhana/Trimmomatic-0.39/trimmomatic-0.39.jar"
+BOWTIE2_PATH="/home/biolab001-dkt-024/sadhana/Tools_Directory/bowtie2-2.4.2-sra-linux-x86_64"
+FASTQC_PATH="/usr/bin/fastqc"
+SAMTOOLS_PATH="/usr/bin/samtools"
+FEATURECOUNTS_PATH="/usr/bin/featureCounts"
+
+# Create output directories
+mkdir -p "${OUTPUT_DIR}/fastqc_pre_trim"
+mkdir -p "${OUTPUT_DIR}/trimmed"
+mkdir -p "${OUTPUT_DIR}/fastqc_post_trim"
+mkdir -p "${OUTPUT_DIR}/aligned"
+mkdir -p "${OUTPUT_DIR}/counts"
+
+# Create Bowtie2 index
+BOWTIE2_INDEX_BASE="${GENOME_DIR}/bowtie2_index/GCF_000283295.1_ASM28329v1"
+mkdir -p $(dirname ${BOWTIE2_INDEX_BASE})
+${BOWTIE2_PATH}/bowtie2-build ${GENOME_FASTA} ${BOWTIE2_INDEX_BASE}
+
+
+    R1_FASTQ_DIR="/home/biolab001-dkt-024/sadhana/R1_FASTQ"
+    R2_FASTQ_DIR="/home/biolab001-dkt-024/sadhana/R2_FASTQ"
+
+    # Run FastQC before trimming
+    ${FASTQC_PATH} -o "${OUTPUT_DIR}/fastqc_pre_trim" \
+    ${R1_FASTQ_DIR}/*.fastq \
+    ${R2_FASTQ_DIR}/*.fastq
+
+   
+    # Run Trimmomatic
+    java -jar ${TRIMMOMATIC_JAR} PE -phred33 \
+  ${R1_FASTQ_DIR}/SRR18455925_1.fastq ${R1_FASTQ_DIR}/SRR18455925_2.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}_1_paired.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}_1_unpaired.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}_2_paired.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}_2_unpaired.fastq \
+  ILLUMINACLIP:/home/biolab001-dkt-024/sadhana/Trimmomatic-0.39/adapters/TruSeq3-PE.fa:2:30:10 \
+  LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+  
+  java -jar ${TRIMMOMATIC_JAR} PE -phred33 \
+  ${R2_FASTQ_DIR}/SRR18455932_1.fastq ${R2_FASTQ_DIR}/SRR18455932_2.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}SRR932_1_paired.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}SRR932_1_unpaired.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}SRR932_2_paired.fastq \
+  ${OUTPUT_DIR}/trimmed/${SAMPLE_NAME}SRR932_2_unpaired.fastq \
+  ILLUMINACLIP:/home/biolab001-dkt-024/sadhana/Trimmomatic-0.39/adapters/TruSeq3-PE.fa:2:30:10 \
+  LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+
+
+    # Run FastQC after trimming
+    
+  TRIMMED_R1_DIR="/home/biolab001-dkt-024/sadhana/TRIMMED_R1"
+  TRIMMED_R2_DIR="/home/biolab001-dkt-024/sadhana/TRIMMED_R2"
+
+  
+    ${FASTQC_PATH} -o "${OUTPUT_DIR}/fastqc_post_trim" \
+    ${TRIMMED_R1_DIR}/*.fastq \
+    ${TRIMMED_R2_DIR}/*.fastq
+   
+   BOWTIE2_INDEX_BASE="/home/biolab001-dkt-024/sadhana/bowtie2_index/genome"
+    
+    # Align with Bowtie2
+    SAMPLE_NAME="SRR925"
+SAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}.sam"
+
+${BOWTIE2_PATH}/bowtie2 -x ${BOWTIE2_INDEX_BASE} \
+  -1 /home/biolab001-dkt-024/sadhana/TRIMMED_R1/_1_paired.fastq \
+  -2 /home/biolab001-dkt-024/sadhana/TRIMMED_R1/_2_paired.fastq \
+  -S "${SAM_FILE}"
+
+SAMPLE_NAME="SRR932"
+SAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}.sam"
+
+${BOWTIE2_PATH}/bowtie2 -x ${BOWTIE2_INDEX_BASE} \
+  -1 /home/biolab001-dkt-024/sadhana/TRIMMED_R2/SRR932_1_paired.fastq \
+  -2 /home/biolab001-dkt-024/sadhana/TRIMMED_R2/SRR932_2_paired.fastq \
+  -S "${SAM_FILE}"
+
+    
+    # Convert SAM to BAM, sort and index
+    # Process SRR925.sam
+SAMPLE_NAME="SRR925"
+SAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}.sam"
+BAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}.bam"
+SORTED_BAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}_sorted.bam"
+
+${SAMTOOLS_PATH} view -bS "${SAM_FILE}" > "${BAM_FILE}"
+${SAMTOOLS_PATH} sort "${BAM_FILE}" -o "${SORTED_BAM_FILE}"
+${SAMTOOLS_PATH} index "${SORTED_BAM_FILE}"
+    
+    # Process SRR932.sam
+SAMPLE_NAME="SRR932"
+SAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}.sam"
+BAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}.bam"
+SORTED_BAM_FILE="/home/biolab001-dkt-024/sadhana/output/aligned/${SAMPLE_NAME}_sorted.bam"
+
+${SAMTOOLS_PATH} view -bS "${SAM_FILE}" > "${BAM_FILE}"
+${SAMTOOLS_PATH} sort "${BAM_FILE}" -o "${SORTED_BAM_FILE}"
+${SAMTOOLS_PATH} index "${SORTED_BAM_FILE}"
+
+
+    # Generate counts using featureCounts
+    # Process SRR925
+SAMPLE_NAME="SRR925"
+SORTED_BAM_FILE="${OUTPUT_DIR}/aligned/${SAMPLE_NAME}_sorted.bam"
+COUNTS_FILE="${OUTPUT_DIR}/counts/${SAMPLE_NAME}_counts.txt"
+
+${FEATURECOUNTS_PATH} -p -a ${GENOME_GTF} -o ${COUNTS_FILE} ${SORTED_BAM_FILE}
+
+# Process SRR932
+SAMPLE_NAME="SRR932"
+SORTED_BAM_FILE="${OUTPUT_DIR}/aligned/${SAMPLE_NAME}_sorted.bam"
+COUNTS_FILE="${OUTPUT_DIR}/counts/${SAMPLE_NAME}_counts.txt"
+
+${FEATURECOUNTS_PATH} -p -a ${GENOME_GTF} -o ${COUNTS_FILE} ${SORTED_BAM_FILE}
+
+
+#!/usr/bin/env Rscript
+
+library("edgeR")
+
+# Load data
+counts <- read.csv("/home/biolab001-dkt-024/sadhana/output.csv", row.names = 1)
+metadata <- read.csv("/home/biolab001-dkt-024/sadhana/metadata.csv", row.names = 1)
+
+# Match samples
+stopifnot(all(colnames(counts) == rownames(metadata)))
+
+# Create DGEList
+group <- factor(metadata$condition)
+dge <- DGEList(counts = counts, group = group)
+
+# Optional filtering (can comment out to avoid removing too many)
+keep <- filterByExpr(dge)
+dge <- dge[keep, , keep.lib.sizes = FALSE]
+
+# Normalization
+dge <- calcNormFactors(dge)
+
+
+ # Design matrix
+ design <- model.matrix(~group)
+
+ dispersion_value <- 0.1
+ 
+# Fit model and perform LRT
+ fit <- glmFit(dge, design, dispersion = dispersion_value)
+ lrt <- glmLRT(fit, coef = 2)
+ 
+ # Save results
+ res <- topTags(lrt, n = Inf)$table
+ colnames(res)[colnames(res) == "FDR"] <- "padj"
+ write.csv(res, file = "edgeR_results.csv")
+ 
+                  or
+ 
+ #DESeq2
+#!/usr/bin/env Rscript
+
+# Load libraries
+library("DESeq2")
+
+# Load count matrix
+counts <- read.csv("/home/biolab001-dkt-024/sadhana/output.csv", row.names = 1)
+
+# Load metadata
+metadata <- read.csv("/home/biolab001-dkt-024/sadhana/metadata.csv", row.names = 1)
+
+# Check sample names match
+stopifnot(all(colnames(counts) == rownames(metadata)))
+
+# Create DESeq2 dataset
+dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = metadata,
+                              design = ~ condition)
+
+# Run DESeq2
+dds <- DESeq(dds)
+
+# Get results
+res <- results(dds)
+
+# Save to CSV
+write.csv(as.data.frame(res), file = "deseq2_results.csv")
+
+
+
+# Load the data
+edgeR_results <- read.csv("/home/biolab001-dkt-024/sadhana/edgeR_results.csv", header = TRUE)
+
+# Filter upregulated genes
+upregulated <- subset(edgeR_results, logFC > 1 & padj < 0.05)
+
+# Filter downregulated genes
+downregulated <- subset(edgeR_results, logFC < -1 & padj < 0.05)
+
+# Save filtered results
+write.csv(upregulated, "upregulated_genes.csv", row.names = FALSE)
+write.csv(downregulated, "downregulated_genes.csv", row.names = FALSE)
+
+
+# Load necessary libraries
+library(ggplot2)
+library(readr)
+
+# Read the CSV files
+srr925 <- read_csv("SRR925_counts.csv")
+srr932 <- read_csv("SRR932_counts.csv")
+
+# Rename columns for clarity
+colnames(srr925) <- c("gene", "Expression")
+colnames(srr932) <- c("gene", "Expression")
+
+# Add condition labels
+srr925$Condition <- "Starvation"
+srr932$Condition <- "Exponential"
+
+# Plot for Starvation
+ggplot(srr925, aes(x = gene, y = Expression)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Gene Expression under Starvation (SRR925)",
+       x = "Gene", y = "Expression Level") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Plot for Exponential
+ggplot(srr932, aes(x = gene, y = Expression)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  labs(title = "Gene Expression under Exponential (SRR932)",
+       x = "Gene", y = "Expression Level") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+  
+                or (if the samples are too much)
+
+#filter the data
+awk -F',' 'NR==1 || $2 >= 5000' SRR925_counts.csv > SRR925_high.csv
+awk -F',' 'NR==1 || $2 >= 15000' SRR932_counts.csv > SRR932_high.csv
+
+awk -F',' 'NR==1 || $2 < 2' SRR925_counts.csv > SRR925_low.csv
+awk -F',' 'NR==1 || $2 < 20' SRR932_counts.csv > SRR932_low.csv
+
+
+{# Load necessary libraries
+library(ggplot2)
+library(readr)
+
+# Read the CSV files
+srr925_high <- read_csv("/home/biolab001-dkt-024/SRR925_high.csv")
+srr925_low <- read_csv("/home/biolab001-dkt-024/SRR925_low.csv")
+srr932_high <- read_csv("/home/biolab001-dkt-024/SRR932_high.csv")
+srr932_low <- read_csv("/home/biolab001-dkt-024/SRR932_low.csv")
+
+
+# Rename columns for clarity
+colnames(srr925_high) <- c("gene", "Expression")
+colnames(srr925_low) <- c("gene", "Expression")
+colnames(srr932_high) <- c("gene", "Expression")
+colnames(srr932_low) <- c("gene", "Expression")
+
+# Add condition labels
+srr925_high$Condition <- "Starvation"
+srr925_low$Condition <- "Starvation"
+srr932_high$Condition <- "Exponential"
+srr932_low$Condition <- "Exponential"} - (run this every time to plot the graph)
+
+# Plot for Starvation_high
+ggplot(srr925_high, aes(x = gene, y = Expression)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Gene Expression under Starvation (SRR925_high)",
+       x = "Gene", y = "Expression Level") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+  # Plot for Starvation_low
+ggplot(srr925_low, aes(x = gene, y = Expression)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Gene Expression under Starvation (SRR925_low)",
+       x = "Gene", y = "Expression Level") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Plot for Exponential_high
+ggplot(srr932_high, aes(x = gene, y = Expression)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  labs(title = "Gene Expression under Exponential (SRR932_high)",
+       x = "Gene", y = "Expression Level") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+  # Plot for Exponential_low
+ggplot(srr932_low, aes(x = gene, y = Expression)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  labs(title = "Gene Expression under Exponential (SRR932_low)",
+       x = "Gene", y = "Expression Level") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+  
+  # volcanoplot
+library(ggplot2)
+
+# Load the data
+data <- read.csv("/home/biolab001-dkt-024/sadhana/rna_seq/output/edgeR_results.csv")
+
+# Create a new column for significance
+data$significance <- "Not Significant"
+data$significance[data$padj < 0.05 & data$logFC > 1] <- "Upregulated"
+data$significance[data$padj < 0.05 & data$logFC < -1] <- "Downregulated"
+
+# Calculate -log10 adjusted p-value
+data$negLog10Padj <- -log10(data$padj)
+
+# Plot using ggplot2
+p <- ggplot(data, aes(x = logFC, y = negLog10Padj)) +
+  geom_point(aes(color = significance), alpha = 0.7, size = 2) +
+  scale_color_manual(values = c("Upregulated" = "red", "Downregulated" = "blue", "Not Significant" = "gray")) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "darkgreen") +
+  labs(
+    title = "Volcano Plot of Differential Gene Expression",
+    x = "Log2 Fold Change",
+    y = "-Log10 Adjusted P-value"
+  ) +
+  theme_minimal()
+
+# Save plot
+ggsave("volcano_plot_ggplot.png", plot = p, width = 10, height = 6, dpi = 300)
+
+# Show plot
+print(p)
+
+
+# normalization for srr925
+library(dplyr)
+
+# Read the data
+df <- read.csv("/home/biolab001-dkt-024/sadhana/SRR925_counts.csv")
+
+# Ensure gene length is in kilobases for FPKM
+df <- df %>%
+  mutate(Length_kb = Length / 1000)
+
+# Total mapped reads (sum of raw counts)
+total_counts <- sum(df$SRR925_counts)
+
+# ---- FPKM calculation ----
+df <- df %>%
+  mutate(
+    FPKM = (SRR925_counts / Length_kb) / (total_counts / 1e6)
+  )
+
+# ---- TPM calculation ----
+# Step 1: calculate rate = counts / length in kb
+df <- df %>%
+  mutate(Rate = SRR925_counts / Length_kb)
+
+# Step 2: calculate per-million scaling factor
+rate_sum <- sum(df$Rate)
+
+# Step 3: TPM = Rate / sum(Rate) * 1e6
+df <- df %>%
+  mutate(TPM = Rate / rate_sum * 1e6)
+
+# Save to CSV
+write.csv(df, "SRR925_counts_with_TPM_FPKM.csv", row.names = FALSE)
+
+# normalization for srr932
+library(dplyr)
+
+# Read the data
+df <- read.csv("/home/biolab001-dkt-024/sadhana/SRR932_counts.csv")
+
+# Ensure gene length is in kilobases for FPKM
+df <- df %>%
+  mutate(Length_kb = Length / 1000)
+
+# Total mapped reads (sum of raw counts)
+total_counts <- sum(df$SRR932_counts)
+
+# ---- FPKM calculation ----
+df <- df %>%
+  mutate(
+    FPKM = (SRR932_counts / Length_kb) / (total_counts / 1e6)
+  )
+
+# ---- TPM calculation ----
+# Step 1: calculate rate = counts / length in kb
+df <- df %>%
+  mutate(Rate = SRR932_counts / Length_kb)
+
+# Step 2: calculate per-million scaling factor
+rate_sum <- sum(df$Rate)
+
+# Step 3: TPM = Rate / sum(Rate) * 1e6
+df <- df %>%
+  mutate(TPM = Rate / rate_sum * 1e6)
+
+# Save to CSV
+write.csv(df, "SRR932_normalized.csv", row.names = FALSE)
+
+
+# heatmap
+library(ggplot2)
+library(pheatmap)
+library(reshape2)
+
+# Read the data
+df <- read.csv("/home/biolab001-dkt-024/sadhana/normalized_plot.csv")
+
+# Prepare data for heatmap (TPM only)
+ tpm_data <- data[, c("TPM_SRR925", "TPM_SRR932")]
+ 
+ # Optional: log-transform TPM values
+tpm_log <- log2(tpm_data + 1)
+
+# Heatmap
+pheatmap(tpm_log, 
+         cluster_rows = TRUE, 
+         cluster_cols = TRUE, 
+         show_rownames = FALSE, 
+         main = "Heatmap of TPM values (log2 transformed)")
+         
+         
+
+
+
+
+
